@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# wall-set — wallpaper picker + pywal theme orchestrator
+# Usage: wall-set [/path/to/image]
+#   Without args: opens nsxiv thumbnail picker from ~/wallpapers/
+#   With arg: applies the given image directly
+
+set -euo pipefail
+
+WALLPAPER_DIR="$HOME/wallpapers"
+OMP_THEME="$HOME/.config/ohmyposh/zen.toml"
+OMP_COLORS="$HOME/.cache/wal/ohmyposh-colors.sh"
+
+apply_theme() {
+  local image="$1"
+
+  # Generate colors from wallpaper
+  wal -i "$image" -q
+
+  # Set wallpaper
+  feh --bg-fill "$image"
+
+  # Merge Xresources for suckless tools (dwm, st, dmenu)
+  [ -f ~/.cache/wal/colors.Xresources ] && xrdb -merge ~/.cache/wal/colors.Xresources
+
+  # Update oh-my-posh palette in zen.toml
+  if [ -f "$OMP_COLORS" ] && [ -f "$OMP_THEME" ]; then
+    source "$OMP_COLORS"
+    sed -i \
+      -e "s/^path = .*/path = \"$PATH_COLOR\"/" \
+      -e "s/^prompt = .*/prompt = \"$PROMPT_COLOR\"/" \
+      -e "s/^prompt_error = .*/prompt_error = \"$PROMPT_ERROR_COLOR\"/" \
+      -e "s/^git_branch = .*/git_branch = \"$GIT_BRANCH_COLOR\"/" \
+      -e "s/^git_status = .*/git_status = \"$GIT_STATUS_COLOR\"/" \
+      -e "s/^duration = .*/duration = \"$DURATION_COLOR\"/" \
+      "$OMP_THEME"
+  fi
+
+  # Copy generated nvim theme-colors to config
+  if [ -f ~/.cache/wal/theme-colors.lua ]; then
+    cp ~/.cache/wal/theme-colors.lua ~/.config/nvim/lua/theme-colors.lua
+  fi
+
+  # Reload tmux theme if running
+  if command -v tmux &>/dev/null && tmux list-sessions &>/dev/null; then
+    [ -f ~/.config/tmux/theme.conf ] && tmux source-file ~/.config/tmux/theme.conf
+  fi
+
+  # Signal dwm to reload Xresources (if supported)
+  pidof dwm &>/dev/null && kill -USR1 "$(pidof dwm)" 2>/dev/null || true
+}
+
+if [ $# -ge 1 ]; then
+  # Direct mode: apply given image
+  apply_theme "$1"
+else
+  # Picker mode: select from wallpapers directory
+  if [ ! -d "$WALLPAPER_DIR" ]; then
+    echo "Error: $WALLPAPER_DIR does not exist"
+    exit 1
+  fi
+
+  selected=$(nsxiv -t -o "$WALLPAPER_DIR" 2>/dev/null | head -1)
+
+  if [ -n "$selected" ]; then
+    apply_theme "$selected"
+  fi
+fi

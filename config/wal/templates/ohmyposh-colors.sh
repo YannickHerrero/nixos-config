@@ -1,0 +1,6 @@
+PATH_COLOR="#{color4}"
+PROMPT_COLOR="#{color3}"
+PROMPT_ERROR_COLOR="#{color1}"
+GIT_BRANCH_COLOR="#{color8}"
+GIT_STATUS_COLOR="#{color6}"
+DURATION_COLOR="#{color3}"
