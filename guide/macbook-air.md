@@ -1,98 +1,172 @@
 # Installation on MacBook Air M2 (Apple Silicon)
 
+This guide follows the [nixos-apple-silicon](https://github.com/nix-community/nixos-apple-silicon) UEFI standalone method, adapted for this flake-based config.
+
 ## Prerequisites
 
-- macOS with the [Asahi Linux installer](https://asahilinux.org/) already run to set up m1n1 + U-Boot (this is done when installing Asahi/omarchy)
-- At least 250 GB of unallocated space on the internal NVMe (shrink from macOS Disk Utility before running Asahi installer, or use space freed from an existing Asahi install)
+- A MacBook Air M2 running macOS 12.3 or later
+- A USB flash drive (512 MB+)
+- Access to a Linux machine (or VM) with Nix installed, to build the installer ISO
+- At least 60 GB of free disk space on the internal NVMe for NixOS
 
-## Step 1: Get the NixOS aarch64 installer
+> If you already have Asahi/omarchy installed, you still need to run the Asahi installer again to create a **separate** UEFI-only stub for NixOS. The existing Asahi stub belongs to omarchy.
 
-Download the NixOS minimal ISO (aarch64) from https://nixos.org/download (select "aarch64" under the minimal ISO section).
+## Step 1: Build the installer ISO
 
-Write it to a USB drive:
+The standard NixOS aarch64 ISO lacks Apple Silicon kernel, drivers, and firmware. You must build a custom installer from the nixos-apple-silicon repo.
+
+On a Linux machine (or an existing Asahi install):
 
 ```bash
-# On Linux or macOS (adjust device name)
-sudo dd if=nixos-minimal-*-aarch64-linux.iso of=/dev/sdX bs=4M status=progress oflag=sync
+git clone https://github.com/tpwrules/nixos-apple-silicon
+cd nixos-apple-silicon
+nix build --extra-experimental-features 'nix-command flakes' .#installer-bootstrap -o installer -j4 -L
 ```
 
-Alternatively, if you already have an Asahi Linux installation, you can use it to write the USB or even install NixOS directly from there.
-
-## Step 2: Boot from USB
-
-1. Shut down the MacBook Air completely
-2. Press and hold the power button until "Loading startup options" appears
-3. Select the USB drive from the boot menu
-4. If using U-Boot: it should chainload the NixOS installer from USB
-
-## Step 3: Connect to WiFi
-
-The NixOS aarch64 minimal ISO may not have Apple Silicon WiFi firmware. If WiFi doesn't work from the installer, use a USB Ethernet adapter or USB tethering from a phone.
-
-If WiFi works:
+Write the ISO to a USB drive:
 
 ```bash
-sudo systemctl start wpa_supplicant
-wpa_cli
-> add_network
-> set_network 0 ssid "YourSSID"
-> set_network 0 psk "YourPassword"
-> enable_network 0
-> quit
+sudo dd if=installer/iso/nixos-*.iso of=/dev/sdX bs=4M status=progress
 ```
 
-## Step 4: Partition the free space
+Replace `/dev/sdX` with your USB device (check with `lsblk`).
 
-Identify the unallocated space (use `lsblk` to see the disk layout). Create an EFI partition and a root partition:
+## Step 2: Set up the UEFI environment (from macOS)
+
+Boot into macOS and run the Asahi installer:
 
 ```bash
-# Find the NVMe device (usually /dev/nvme0n1)
-lsblk
+curl https://alx.sh | sh
+```
 
-# Create partitions in the free space (adjust partition numbers)
-# DO NOT touch existing macOS or Asahi partitions
-parted /dev/nvme0n1 -- mkpart ESP fat32 START END    # 512 MB for EFI
-parted /dev/nvme0n1 -- set N esp on
-parted /dev/nvme0n1 -- mkpart root ext4 END 100%     # rest for root
+Follow the prompts:
 
-# Format
-mkfs.fat -F 32 /dev/nvme0n1pN      # EFI partition
-mkfs.ext4 /dev/nvme0n1pM            # root partition
+1. Resize your macOS partition or use existing free space (minimum 20 GB for the NixOS root partition)
+2. Select **"UEFI environment only"** when asked what to install
+3. Name the new OS **"NixOS"**
+4. Complete the installation — a stub partition (m1n1 + U-Boot) and an EFI partition are created automatically
+5. When prompted, boot into the new stub from the startup disk picker
+6. Follow the on-screen instructions to set **permissive security** in recovery mode
+7. Shut down the MacBook
 
-# Mount
-mount /dev/nvme0n1pM /mnt
+## Step 3: Boot the installer
+
+1. Plug in the USB drive
+2. Power on the MacBook — hold the power button until "Loading startup options" appears
+3. Select the **NixOS** stub (not USB directly — U-Boot chainloads from USB)
+4. U-Boot should automatically boot from USB. If it doesn't, interrupt autoboot and run `bootmenu` to select the USB device
+
+Once booted into the installer:
+
+```bash
+sudo su
+```
+
+Optionally increase the console font size:
+
+```bash
+setfont ter-v32n
+```
+
+## Step 4: Connect to WiFi
+
+The nixos-apple-silicon installer uses `iwd`:
+
+```bash
+iwctl
+[iwd]# station wlan0 scan
+[iwd]# station wlan0 get-networks
+[iwd]# station wlan0 connect "YourSSID"
+[iwd]# exit
+```
+
+## Step 5: Partition and mount
+
+The Asahi installer already created the EFI partition. You only need to create a root partition in the remaining free space.
+
+Create the root partition:
+
+```bash
+sgdisk /dev/nvme0n1 -n 0:0 -s
+```
+
+Verify the layout:
+
+```bash
+sgdisk /dev/nvme0n1 -p
+```
+
+Format the new partition (the last one, e.g. `/dev/nvme0n1p5` — check the output above):
+
+```bash
+mkfs.ext4 -L nixos /dev/nvme0n1pN
+```
+
+Replace `N` with the actual partition number from `sgdisk -p`.
+
+Mount the partitions:
+
+```bash
+mount /dev/disk/by-label/nixos /mnt
 mkdir -p /mnt/boot
-mount /dev/nvme0n1pN /mnt/boot
+mount /dev/disk/by-partuuid/$(cat /proc/device-tree/chosen/asahi,efi-system-partition) /mnt/boot
 ```
 
-Replace `START`, `END`, `N`, and `M` with the actual values from `parted print free`.
+The device-tree path ensures you mount the correct Asahi-created EFI partition.
 
-## Step 5: Clone this repo
+## Step 6: Clone this repo and generate hardware config
 
 ```bash
 nix-shell -p git
 git clone https://github.com/YannickHerrero/nixos-config /mnt/etc/nixos
 ```
 
-## Step 6: Generate hardware configuration
+Generate the hardware configuration:
 
 ```bash
 nixos-generate-config --root /mnt --show-hardware-config > /mnt/etc/nixos/hosts/macbook-air/hardware-configuration.nix
 ```
 
-## Step 7: Install
+## Step 7: Copy peripheral firmware (recommended)
+
+Copy the firmware from the boot partition so NixOS can access it offline (avoids needing `--impure` for firmware on future rebuilds):
+
+```bash
+mkdir -p /mnt/etc/nixos/firmware
+cp /mnt/boot/asahi/{all_firmware.tar.gz,kernelcache*} /mnt/etc/nixos/firmware
+```
+
+If you use this, make sure your NixOS config includes:
+
+```nix
+hardware.asahi.peripheralFirmwareDirectory = ./firmware;
+```
+
+Otherwise, the default behavior extracts firmware automatically but requires `--impure`.
+
+## Step 8: Install
+
+Synchronize the system clock (TLS certificate validation will fail otherwise):
+
+```bash
+systemctl restart systemd-timesyncd
+```
+
+Run the installer:
 
 ```bash
 nixos-install --flake /mnt/etc/nixos#macbook-air --impure
 ```
 
-The `--impure` flag is required for Apple Silicon firmware access.
+Set the root password when prompted, then reboot:
 
-Set the root password when prompted, then reboot.
+```bash
+reboot
+```
 
-## Step 8: Post-install setup
+## Step 9: Post-install setup
 
-After rebooting, the boot chain is: m1n1 -> U-Boot -> systemd-boot -> NixOS.
+The boot chain is: m1n1 → U-Boot → systemd-boot → NixOS.
 
 Log in as root and set the user password:
 
@@ -100,21 +174,21 @@ Log in as root and set the user password:
 passwd sovereign
 ```
 
-Log out and log back in as `sovereign`. dwm should start automatically.
+Log out and log back in as `sovereign`.
 
-## Step 9: Verify hardware
+## Step 10: Verify hardware
 
 ```bash
-# Check GPU acceleration
+# GPU acceleration
 glxinfo | grep renderer
 # Should show "Asahi" or similar
 
-# Check WiFi
+# WiFi
 nmcli device status
 
-# Check audio
+# Audio
 wpctl status
 
-# Check Bluetooth
+# Bluetooth
 bluetoothctl show
 ```
