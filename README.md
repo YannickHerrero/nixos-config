@@ -1,6 +1,6 @@
 # NixOS Configuration
 
-Fully reproducible NixOS configuration for the **MSI Pulse 15** gaming laptop (dual-boot with Windows 11). Uses suckless tools (dwm, st, dmenu) as the desktop environment and home-manager for user-level configuration.
+Fully reproducible NixOS configuration with suckless tools (dwm, st, dmenu) as the desktop environment and home-manager for user-level configuration.
 
 ## Hardware
 

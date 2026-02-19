@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git clone:*)",
+      "Bash(head:*)",
+      "Bash(chmod:*)",
+      "WebFetch(domain:dwm.suckless.org)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:wiki.hypr.land)",
+      "WebFetch(domain:git.suckless.org)",
+      "Bash(make clean:*)",
+      "Bash(make:*)",
+      "Bash(cc -c:*)"
+    ]
+  }
+}
