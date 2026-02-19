@@ -1,17 +1,163 @@
 { config, pkgs, lib, ... }:
 
 {
-  programs.bash = {
+  programs.zsh = {
     enable = true;
-    shellAliases = {
-      ll = "ls -la";
-      la = "ls -A";
-      gs = "git status";
-      rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#pulse15";
+
+    autosuggestion.enable = true;
+    syntaxHighlighting.enable = true;
+    enableCompletion = true;
+
+    history = {
+      size = 5000;
+      save = 5000;
+      path = "${config.home.homeDirectory}/.zsh_history";
+      ignoreDups = true;
+      ignoreAllDups = true;
+      ignoreSpace = true;
+      share = true;
     };
+
+    sessionVariables = {
+      EDITOR = "nvim";
+    };
+
+    shellAliases = {
+      v = "nvim";
+      ".." = "cd ..";
+      "..." = "cd ../..";
+      "...." = "cd ../../..";
+      ls = "ls --color";
+      mkcd = ''function _mkcd() { mkdir -p "$1" && cd "$1" }; _mkcd'';
+      vswap = "rm -rf ~/.local/state/nvim/swap/";
+      rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#pulse15";
+      gsp = "git-personal";
+    };
+
+    initExtra = ''
+      # Zinit
+      ZINIT_HOME="$HOME/.local/share/zinit/zinit.git"
+      if [ ! -d "$ZINIT_HOME" ]; then
+        mkdir -p "$(dirname $ZINIT_HOME)"
+        git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+      fi
+      source "$ZINIT_HOME/zinit.zsh"
+
+      # Zinit plugins
+      zinit light zsh-users/zsh-completions
+      zinit light Aloxaf/fzf-tab
+
+      # Completions
+      zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
+      zstyle ':completion:*' list-colors "''${(s.:.)LS_COLORS}"
+      zstyle ':completion:*' menu no
+      zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
+      zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'
+
+      # History search with up/down arrows
+      autoload -Uz history-search-end
+      zle -N history-beginning-search-backward-end history-search-end
+      zle -N history-beginning-search-forward-end history-search-end
+      bindkey "$terminfo[kcuu1]" history-beginning-search-backward-end
+      bindkey "$terminfo[kcud1]" history-beginning-search-forward-end
+
+      # Tool init
+      eval "$(oh-my-posh init zsh --config ~/.config/ohmyposh/zen.toml)"
+      eval "$(zoxide init --cmd z zsh)"
+
+      # Restore pywal terminal colors
+      [ -f ~/.cache/wal/sequences ] && (cat ~/.cache/wal/sequences &)
+
+      # --- Functions ---
+
+      # Set git to use personal account in current repository
+      git-personal() {
+        local git_root
+        git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+
+        if [[ -z "$git_root" ]]; then
+          echo "Error: Not in a git repository"
+          return 1
+        fi
+
+        git config --local user.name "YannickHerrero"
+        git config --local user.email "yannick.herrero@proton.me"
+
+        echo "Git personal account configured for: $(basename "$git_root")"
+        echo "  Name:  YannickHerrero"
+        echo "  Email: yannick.herrero@proton.me"
+      }
+
+      # Tmux sessionizer - select a project and attach/create tmux session
+      f() {
+        local dir
+        dir=$(find "$HOME/dev" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | \
+        fzf --preview "eza --tree --level=1 --color=always $HOME/dev/{}" \
+            --bind 'ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up')
+
+        if [ -z "$dir" ]; then
+          return
+        fi
+
+        local session_name="$dir"
+        local project_path="$HOME/dev/$dir"
+
+        if tmux has-session -t "$session_name" 2>/dev/null; then
+          if [ -n "$TMUX" ]; then
+            tmux switch-client -t "$session_name"
+          else
+            tmux attach-session -t "$session_name"
+          fi
+        else
+          tmux new-session -d -s "$session_name" -c "$project_path" -n "nvim"
+          tmux new-window -t "$session_name" -c "$project_path" -n "opencode"
+          tmux new-window -t "$session_name" -c "$project_path" -n "run"
+          tmux new-window -t "$session_name" -c "$project_path" -n "zsh"
+          tmux split-window -h -t "$session_name:run"
+          tmux select-window -t "$session_name:nvim"
+
+          if [ -n "$TMUX" ]; then
+            tmux switch-client -t "$session_name"
+          else
+            tmux attach-session -t "$session_name"
+          fi
+        fi
+      }
+
+      # Fuzzy file finder - open selected file in nvim
+      ff() {
+        local file
+        file=$(find "$HOME/dev" "$HOME/.config" -type d \( \
+          -path "*/node_modules" -o \
+          -path "*/.git" -o \
+          -path "*/.cache" -o \
+          -path "*/.vscode" -o \
+          -path "*/.npm" -o \
+          -path "*/dist" -o \
+          -path "*/.next" -o \
+          -path "*/.expo" -o \
+          -path "*/db" -o \
+          -path "*/build" -o \
+          -path "*/__pycache__" -o \
+          -path "*/.idea" -o \
+          -path "*/.env" -o \
+          -path "*/.vs" -o \
+          -path "*/vendor" -o \
+          -path "*/coverage" -o \
+          -path "*/.terraform" -o \
+          -path "*/.bundle" -o \
+          -path "*/tmp" -o \
+          -path "*/logs" -o \
+          -path "*/.sass-cache" \
+        \) -prune -o -type f -print 2>/dev/null | \
+        fzf --preview 'bat --color=always --style=numbers --line-range=:500 {}' \
+            --bind 'ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up')
+        if [ -n "$file" ]; then
+          nvim "$file"
+        fi
+      }
+    '';
   };
 
-  home.sessionVariables = {
-    EDITOR = "nvim";
-  };
+  home.sessionPath = [ "$HOME/.local/bin" ];
 }
