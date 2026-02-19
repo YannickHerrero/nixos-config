@@ -1,23 +1,12 @@
 # NixOS Configuration
 
-Fully reproducible NixOS configuration with suckless tools (dwm, st, dmenu) as the desktop environment and home-manager for user-level configuration.
-
-## Hardware
-
-- **Laptop**: MSI Pulse 15
-- **CPU**: Intel Core i7-13620H (10 cores)
-- **GPU**: NVIDIA RTX 4070 (blacklisted — Intel iGPU only)
-- **RAM**: 16 GB DDR5
-- **SSD**: 512 GB NVMe
-- **WiFi**: Intel AX211
-- **Display**: 15.6" QHD 2560x1440 240Hz
-- **Keyboard**: AZERTY French
+Fully reproducible NixOS configuration with suckless tools (dwm, st, dmenu) as the desktop environment and home-manager for user-level configuration. Dual-boots with Windows 11 via GRUB.
 
 ## What's included
 
 - **NixOS** with flakes (nixos-unstable channel)
-- **Suckless tools**: dwm, st, dmenu — built from vendored source
-- **Home Manager**: shell aliases, git (with delta), mpv config
+- **Suckless tools**: dwm, st, dmenu — built from vendored source with patches (Xresources, fibonacci/dwindle layout)
+- **Home Manager**: zsh, tmux, neovim, oh-my-posh, git (with delta), mpv, pywal theming
 - **Modules**: graphics (Intel VA-API), PipeWire audio, Bluetooth, NetworkManager, TLP power management, fonts, locale (fr_FR)
 
 ## Repository structure
@@ -46,6 +35,10 @@ nixos-config/
     ├── default.nix
     ├── shell.nix
     ├── git.nix
+    ├── neovim.nix
+    ├── tmux.nix
+    ├── ohmyposh.nix
+    ├── theming.nix
     └── mpv.nix
 ```
 
@@ -101,7 +94,7 @@ mount /dev/nvme0n1p1 /mnt/boot    # existing EFI partition
 
 ```bash
 nix-shell -p git
-git clone https://github.com/YOUR_USERNAME/nixos-config /mnt/etc/nixos
+git clone https://github.com/YannickHerrero/nixos-config /mnt/etc/nixos
 ```
 
 ### 6. Generate hardware configuration
@@ -121,7 +114,7 @@ Set the root password when prompted, then reboot.
 After rebooting, log in and set the user password:
 
 ```bash
-sudo passwd yannick
+sudo passwd sovereign
 ```
 
 ## Daily usage
@@ -163,8 +156,7 @@ The suckless tools (dwm, st, dmenu) are built from the vendored source in `suckl
 
 1. Edit the source directly (e.g. `suckless/dwm/config.def.h`)
 2. To apply a patch: download the `.diff` file and apply it with `patch -p1 < patchfile.diff` from within the tool's directory
-3. Document applied patches in the tool's `README.md`
-4. Rebuild the system — NixOS will recompile the tool from the modified source:
+3. Rebuild the system — NixOS will recompile the tool from the modified source:
 
 ```bash
 rebuild
