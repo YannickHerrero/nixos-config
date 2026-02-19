@@ -161,6 +161,8 @@ static void destroynotify(XEvent *e);
 static void detach(Client *c);
 static void detachstack(Client *c);
 static Monitor *dirtomon(int dir);
+static void dwindle(Monitor *m);
+static void fibonacci(Monitor *mon, int s);
 static void drawbar(Monitor *m);
 static void drawbars(void);
 static void enternotify(XEvent *e);
@@ -184,6 +186,7 @@ static void maprequest(XEvent *e);
 static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
+static void movestack(const Arg *arg);
 static Client *nexttiled(Client *c);
 static void pop(Client *c);
 static void propertynotify(XEvent *e);
@@ -209,10 +212,12 @@ static void seturgent(Client *c, int urg);
 static void showhide(Client *c);
 static void spawn(const Arg *arg);
 static void tag(const Arg *arg);
+static void tagandview(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tile(Monitor *m);
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
+static void togglelayout(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
@@ -1205,6 +1210,54 @@ movemouse(const Arg *arg)
 	}
 }
 
+void
+movestack(const Arg *arg)
+{
+	Client *c = NULL, *p = NULL, *pc = NULL, *i;
+
+	if (!selmon->sel || selmon->sel->isfloating)
+		return;
+
+	if (arg->i > 0) {
+		for (c = selmon->sel->next; c && (!ISVISIBLE(c) || c->isfloating); c = c->next);
+		if (!c)
+			for (c = selmon->clients; c && (!ISVISIBLE(c) || c->isfloating); c = c->next);
+	} else {
+		for (i = selmon->clients; i != selmon->sel; i = i->next)
+			if (ISVISIBLE(i) && !i->isfloating)
+				c = i;
+		if (!c)
+			for (; i; i = i->next)
+				if (ISVISIBLE(i) && !i->isfloating)
+					c = i;
+	}
+
+	for (i = selmon->clients; i && (!p || !pc); i = i->next) {
+		if (i->next == selmon->sel)
+			p = i;
+		if (i->next == c)
+			pc = i;
+	}
+
+	if (c && c != selmon->sel) {
+		Client *temp = selmon->sel->next == c ? selmon->sel : selmon->sel->next;
+		selmon->sel->next = c->next == selmon->sel ? c : c->next;
+		c->next = temp;
+
+		if (p && p != c)
+			p->next = c;
+		if (pc && pc != selmon->sel)
+			pc->next = selmon->sel;
+
+		if (selmon->sel == selmon->clients)
+			selmon->clients = c;
+		else if (c == selmon->clients)
+			selmon->clients = selmon->sel;
+
+		arrange(selmon);
+	}
+}
+
 Client *
 nexttiled(Client *c)
 {
@@ -1764,11 +1817,85 @@ tag(const Arg *arg)
 }
 
 void
+tagandview(const Arg *arg)
+{
+	if (selmon->sel && arg->ui & TAGMASK) {
+		selmon->sel->tags = arg->ui & TAGMASK;
+		focus(NULL);
+		arrange(selmon);
+		view(arg);
+	}
+}
+
+void
 tagmon(const Arg *arg)
 {
 	if (!selmon->sel || !mons->next)
 		return;
 	sendmon(selmon->sel, dirtomon(arg->i));
+}
+
+void
+fibonacci(Monitor *mon, int s)
+{
+	unsigned int i, n, nx, ny, nw, nh;
+	Client *c;
+
+	for (n = 0, c = nexttiled(mon->clients); c; c = nexttiled(c->next), n++);
+	if (n == 0)
+		return;
+
+	nx = mon->wx;
+	ny = 0;
+	nw = mon->ww;
+	nh = mon->wh;
+
+	for (i = 0, c = nexttiled(mon->clients); c; c = nexttiled(c->next)) {
+		if ((i % 2 && nh / 2 > 2 * c->bw)
+		   || (!(i % 2) && nw / 2 > 2 * c->bw)) {
+			if (i < n - 1) {
+				if (i % 2)
+					nh /= 2;
+				else
+					nw /= 2;
+				if ((i % 4) == 2 && !s)
+					nx += nw;
+				else if ((i % 4) == 3 && !s)
+					ny += nh;
+			}
+			if ((i % 4) == 0) {
+				if (s)
+					ny += nh;
+				else
+					ny -= nh;
+			}
+			else if ((i % 4) == 1)
+				nx += nw;
+			else if ((i % 4) == 2)
+				ny += nh;
+			else if ((i % 4) == 3) {
+				if (s)
+					nx += nw;
+				else
+					nx -= nw;
+			}
+			if (i == 0) {
+				if (n != 1)
+					nw = mon->ww * mon->mfact;
+				ny = mon->wy;
+			}
+			else if (i == 1)
+				nw = mon->ww - nw;
+			i++;
+		}
+		resize(c, nx, ny, nw - 2 * c->bw, nh - 2 * c->bw, False);
+	}
+}
+
+void
+dwindle(Monitor *mon)
+{
+	fibonacci(mon, 1);
 }
 
 void
@@ -1820,6 +1947,25 @@ togglefloating(const Arg *arg)
 		resize(selmon->sel, selmon->sel->x, selmon->sel->y,
 			selmon->sel->w, selmon->sel->h, 0);
 	arrange(selmon);
+}
+
+void
+togglelayout(const Arg *arg)
+{
+	if (!arg || !arg->v)
+		return;
+	if (selmon->lt[selmon->sellt] == (Layout *)arg->v) {
+		selmon->sellt ^= 1;
+		selmon->lt[selmon->sellt] = &layouts[0];
+	} else {
+		selmon->sellt ^= 1;
+		selmon->lt[selmon->sellt] = (Layout *)arg->v;
+	}
+	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, sizeof selmon->ltsymbol);
+	if (selmon->sel)
+		arrange(selmon);
+	else
+		drawbar(selmon);
 }
 
 void
