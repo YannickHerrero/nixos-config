@@ -42,9 +42,13 @@ nixos-config/
     └── mpv.nix
 ```
 
-## Fresh installation
+## Installation
 
-### 1. Prepare Windows
+Download the NixOS minimal ISO from https://nixos.org/download and write it to a USB drive. Boot from the USB.
+
+### Option A: Dual-boot alongside Windows
+
+#### 1. Prepare Windows
 
 Before installing NixOS alongside Windows 11:
 
@@ -53,11 +57,56 @@ Before installing NixOS alongside Windows 11:
 3. **Disable Secure Boot** — Enter BIOS (usually Del or F2 at boot) > Security > Secure Boot > Disabled
 4. **Disable Fast Startup** — Control Panel > Power Options > Choose what the power buttons do > Turn off fast startup
 
-### 2. Boot the NixOS installer
+#### 2. Partition and mount drives
 
-Download the NixOS minimal ISO from https://nixos.org/download and write it to a USB drive. Boot from the USB.
+Create a root partition on the free space. Reuse the existing Windows EFI partition.
 
-### 3. Connect to WiFi
+| Partition | Size     | Type  | Mount    |
+|-----------|----------|-------|----------|
+| EFI       | existing | vfat  | /boot    |
+| Root      | rest     | ext4  | /        |
+
+```bash
+# Format only the new root partition (adjust device name)
+mkfs.ext4 /dev/nvme0n1pX
+
+# Mount
+mount /dev/nvme0n1pX /mnt
+mkdir -p /mnt/boot
+mount /dev/nvme0n1p1 /mnt/boot    # existing EFI partition
+```
+
+### Option B: Clean install on a new drive
+
+#### 1. Partition and mount drives
+
+Create an EFI partition and a root partition on the entire disk.
+
+| Partition | Size   | Type  | Mount    |
+|-----------|--------|-------|----------|
+| EFI       | 512 MB | vfat  | /boot    |
+| Root      | rest   | ext4  | /        |
+
+```bash
+# Partition (adjust device name)
+parted /dev/nvme0n1 -- mklabel gpt
+parted /dev/nvme0n1 -- mkpart ESP fat32 1MiB 512MiB
+parted /dev/nvme0n1 -- set 1 esp on
+parted /dev/nvme0n1 -- mkpart root ext4 512MiB 100%
+
+# Format
+mkfs.fat -F 32 /dev/nvme0n1p1
+mkfs.ext4 /dev/nvme0n1p2
+
+# Mount
+mount /dev/nvme0n1p2 /mnt
+mkdir -p /mnt/boot
+mount /dev/nvme0n1p1 /mnt/boot
+```
+
+### Common steps (both options)
+
+#### 1. Connect to WiFi
 
 ```bash
 sudo systemctl start wpa_supplicant
@@ -71,39 +120,20 @@ wpa_cli
 
 Or use `nmtui` if NetworkManager is available on the installer.
 
-### 4. Partition and mount drives
-
-Use `fdisk`, `parted`, or `cfdisk` to create partitions on the free space. Example layout:
-
-| Partition | Size     | Type  | Mount    |
-|-----------|----------|-------|----------|
-| EFI       | existing | vfat  | /boot    |
-| Root      | rest     | ext4  | /        |
-
-```bash
-# Format (adjust device names)
-mkfs.ext4 /dev/nvme0n1pX
-
-# Mount
-mount /dev/nvme0n1pX /mnt
-mkdir -p /mnt/boot
-mount /dev/nvme0n1p1 /mnt/boot    # existing EFI partition
-```
-
-### 5. Clone this repo
+#### 2. Clone this repo
 
 ```bash
 nix-shell -p git
 git clone https://github.com/YannickHerrero/nixos-config /mnt/etc/nixos
 ```
 
-### 6. Generate hardware configuration
+#### 3. Generate hardware configuration
 
 ```bash
 nixos-generate-config --root /mnt --show-hardware-config > /mnt/etc/nixos/hosts/pulse15/hardware-configuration.nix
 ```
 
-### 7. Install
+#### 4. Install
 
 ```bash
 nixos-install --flake /mnt/etc/nixos#pulse15
