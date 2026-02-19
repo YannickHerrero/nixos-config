@@ -40,9 +40,13 @@
   # Enable flakes
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
+  # Zsh system-wide
+  programs.zsh.enable = true;
+
   # User account
-  users.users.yannick = {
+  users.users.sovereign = {
     isNormalUser = true;
+    shell = pkgs.zsh;
     extraGroups = [ "wheel" "networkmanager" "video" "audio" "bluetooth" ];
   };
 
@@ -50,7 +54,7 @@
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
-    users.yannick = import ../../home;
+    users.sovereign = import ../../home;
   };
 
   system.stateVersion = "24.11";

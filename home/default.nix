@@ -5,10 +5,14 @@
     ./shell.nix
     ./git.nix
     ./mpv.nix
+    ./tmux.nix
+    ./neovim.nix
+    ./ohmyposh.nix
+    ./theming.nix
   ];
 
-  home.username = "yannick";
-  home.homeDirectory = "/home/yannick";
+  home.username = "sovereign";
+  home.homeDirectory = "/home/sovereign";
 
   home.stateVersion = "24.11";
 
