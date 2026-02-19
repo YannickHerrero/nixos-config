@@ -4,7 +4,6 @@
   environment.systemPackages = with pkgs; [
     # Core CLI
     git
-    vim
     neovim
     wget
     curl
@@ -15,6 +14,12 @@
     tree
     man-pages
     fastfetch
+    zoxide
+    fzf
+    eza
+    bat
+    lazygit
+    delta
 
     # GUI
     firefox
