@@ -14,6 +14,7 @@
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
 #include <X11/XKBlib.h>
+#include <X11/Xresource.h>
 
 char *argv0;
 #include "arg.h"
@@ -1127,6 +1128,39 @@ xicdestroy(XIC xim, XPointer client, XPointer call)
 }
 
 void
+readxresources(void)
+{
+	XrmInitialize();
+
+	char *resm = XResourceManagerString(xw.dpy);
+	if (!resm)
+		return;
+
+	XrmDatabase db = XrmGetStringDatabase(resm);
+	if (!db)
+		return;
+
+	char *type;
+	XrmValue value;
+	char name[256];
+
+	for (int i = 0; i < 16; i++) {
+		snprintf(name, sizeof(name), "st.color%d", i);
+		if (XrmGetResource(db, name, "*", &type, &value))
+			colorname[i] = strdup(value.addr);
+	}
+
+	if (XrmGetResource(db, "st.foreground", "*", &type, &value))
+		colorname[258] = strdup(value.addr);
+	if (XrmGetResource(db, "st.background", "*", &type, &value))
+		colorname[259] = strdup(value.addr);
+	if (XrmGetResource(db, "st.cursorColor", "*", &type, &value))
+		colorname[256] = strdup(value.addr);
+
+	XrmDestroyDatabase(db);
+}
+
+void
 xinit(int cols, int rows)
 {
 	XGCValues gcvalues;
@@ -1146,6 +1180,9 @@ xinit(int cols, int rows)
 
 	usedfont = (opt_font == NULL)? font : opt_font;
 	xloadfonts(usedfont, 0);
+
+	/* read Xresources before loading colors */
+	readxresources();
 
 	/* colors */
 	xw.cmap = XDefaultColormap(xw.dpy, xw.scr);

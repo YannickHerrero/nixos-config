@@ -40,6 +40,7 @@
 #include <X11/extensions/Xinerama.h>
 #endif /* XINERAMA */
 #include <X11/Xft/Xft.h>
+#include <X11/Xresource.h>
 
 #include "drw.h"
 #include "util.h"
@@ -202,6 +203,8 @@ static void setfullscreen(Client *c, int fullscreen);
 static void setlayout(const Arg *arg);
 static void setmfact(const Arg *arg);
 static void setup(void);
+static void readxresources(void);
+static void reload(int sig);
 static void seturgent(Client *c, int urg);
 static void showhide(Client *c);
 static void spawn(const Arg *arg);
@@ -1535,6 +1538,80 @@ setmfact(const Arg *arg)
 }
 
 void
+/*
+ * Xresource preferences to load at startup
+ */
+typedef struct {
+	const char *name;
+	enum { STRING = 0, INTEGER = 1, FLOAT = 2 } type;
+	void *dst;
+} ResourcePref;
+
+static ResourcePref resources[] = {
+	{ "color0",        STRING,  &col_gray1 },
+	{ "color8",        STRING,  &col_gray2 },
+	{ "foreground",    STRING,  &col_gray3 },
+	{ "color15",       STRING,  &col_gray4 },
+	{ "color4",        STRING,  &col_cyan },
+	{ "borderpx",      INTEGER, &borderpx },
+	{ "snap",          INTEGER, &snap },
+	{ "showbar",       INTEGER, &showbar },
+	{ "topbar",        INTEGER, &topbar },
+	{ "nmaster",       INTEGER, &nmaster },
+	{ "resizehints",   INTEGER, &resizehints },
+	{ "mfact",         FLOAT,   &mfact },
+};
+
+void
+readxresources(void)
+{
+	XrmInitialize();
+
+	char *resm = XResourceManagerString(dpy);
+	if (!resm)
+		return;
+
+	XrmDatabase db = XrmGetStringDatabase(resm);
+	if (!db)
+		return;
+
+	char *type;
+	XrmValue value;
+
+	for (unsigned int i = 0; i < LENGTH(resources); i++) {
+		char fullname[256];
+		snprintf(fullname, sizeof(fullname), "dwm.%s", resources[i].name);
+
+		if (XrmGetResource(db, fullname, "*", &type, &value)) {
+			if (resources[i].type == STRING) {
+				*(char **)resources[i].dst = strdup(value.addr);
+			} else if (resources[i].type == INTEGER) {
+				*(int *)resources[i].dst = strtol(value.addr, NULL, 10);
+			} else if (resources[i].type == FLOAT) {
+				*(float *)resources[i].dst = strtof(value.addr, NULL);
+			}
+		}
+	}
+
+	XrmDestroyDatabase(db);
+}
+
+void
+reload(int sig)
+{
+	(void)sig;
+
+	readxresources();
+
+	for (int i = 0; i < LENGTH(colors); i++) {
+		free(scheme[i]);
+		scheme[i] = drw_scm_create(drw, colors[i], 3);
+	}
+
+	focus(NULL);
+	arrange(NULL);
+}
+
 setup(void)
 {
 	int i;
@@ -1551,6 +1628,15 @@ setup(void)
 	/* clean up any zombies (inherited from .xinitrc etc) immediately */
 	while (waitpid(-1, NULL, WNOHANG) > 0);
 
+	/* handle SIGUSR1 for live Xresources reload */
+	{
+		struct sigaction sa_reload;
+		sigemptyset(&sa_reload.sa_mask);
+		sa_reload.sa_flags = SA_RESTART;
+		sa_reload.sa_handler = reload;
+		sigaction(SIGUSR1, &sa_reload, NULL);
+	}
+
 	/* init screen */
 	screen = DefaultScreen(dpy);
 	sw = DisplayWidth(dpy, screen);
@@ -1562,6 +1648,9 @@ setup(void)
 	lrpad = drw->fonts->h;
 	bh = drw->fonts->h + 2;
 	updategeom();
+
+	/* read Xresources before creating color schemes */
+	readxresources();
 	/* init atoms */
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", False);

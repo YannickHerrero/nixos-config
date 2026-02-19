@@ -15,6 +15,7 @@
 #include <X11/extensions/Xinerama.h>
 #endif
 #include <X11/Xft/Xft.h>
+#include <X11/Xresource.h>
 
 #include "drw.h"
 #include "util.h"
@@ -611,6 +612,44 @@ run(void)
 }
 
 static void
+readxresources(void)
+{
+	XrmInitialize();
+
+	char *resm = XResourceManagerString(dpy);
+	if (!resm)
+		return;
+
+	XrmDatabase db = XrmGetStringDatabase(resm);
+	if (!db)
+		return;
+
+	char *type;
+	XrmValue value;
+
+	if (XrmGetResource(db, "dmenu.normfg", "*", &type, &value))
+		colors[SchemeNorm][ColFg] = strdup(value.addr);
+	if (XrmGetResource(db, "dmenu.normbg", "*", &type, &value))
+		colors[SchemeNorm][ColBg] = strdup(value.addr);
+	if (XrmGetResource(db, "dmenu.selfg", "*", &type, &value))
+		colors[SchemeSel][ColFg] = strdup(value.addr);
+	if (XrmGetResource(db, "dmenu.selbg", "*", &type, &value))
+		colors[SchemeSel][ColBg] = strdup(value.addr);
+
+	/* Also try standard color names as fallback */
+	if (XrmGetResource(db, "dmenu.foreground", "*", &type, &value)) {
+		colors[SchemeNorm][ColFg] = strdup(value.addr);
+		colors[SchemeSel][ColFg] = strdup(value.addr);
+	}
+	if (XrmGetResource(db, "dmenu.background", "*", &type, &value))
+		colors[SchemeNorm][ColBg] = strdup(value.addr);
+	if (XrmGetResource(db, "dmenu.selbackground", "*", &type, &value))
+		colors[SchemeSel][ColBg] = strdup(value.addr);
+
+	XrmDestroyDatabase(db);
+}
+
+static void
 setup(void)
 {
 	int x, y, i, j;
@@ -784,6 +823,8 @@ main(int argc, char *argv[])
 	if (pledge("stdio rpath", NULL) == -1)
 		die("pledge");
 #endif
+
+	readxresources();
 
 	if (fast && !isatty(0)) {
 		grabkeyboard();

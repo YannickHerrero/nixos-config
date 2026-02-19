@@ -4,4 +4,4 @@ Custom build of [dmenu](https://tools.suckless.org/dmenu/) — dynamic menu.
 
 ## Applied patches
 
-_No patches applied yet. Document each patch here as it is applied._
+- **xresources** — Reads colors from `~/.Xresources` at startup. Resources: `dmenu.normfg`, `dmenu.normbg`, `dmenu.selfg`, `dmenu.selbg`, `dmenu.foreground`, `dmenu.background`, `dmenu.selbackground`.
