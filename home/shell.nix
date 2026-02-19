@@ -30,7 +30,7 @@
       ls = "ls --color";
       mkcd = ''function _mkcd() { mkdir -p "$1" && cd "$1" }; _mkcd'';
       vswap = "rm -rf ~/.local/state/nvim/swap/";
-      rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#pulse15";
+      rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#$(hostname) --impure";
       gsp = "git-personal";
     };
 
